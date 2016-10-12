@@ -100,7 +100,9 @@ public class GradientDescentClassifier implements Classifier {
 		this.eta = eta;
 	}
 
-	// PERCEPTRON METHODS BELOW THIS
+	/**
+	 * TODO: Comment
+	 */
 	public void train(DataSet data) {
 		initializeWeights(data.getAllFeatureIndices());
 
@@ -118,8 +120,23 @@ public class GradientDescentClassifier implements Classifier {
 				for (Integer featureIndex : e.getFeatureSet()) {
 					double oldWeight = weights.get(featureIndex);
 					double featureValue = e.getFeature(featureIndex);
+					
+					double c = 0.0;
+					if(loss == this.EXPONENTIAL_LOSS)
+						c = eta * Math.exp(-label * getDistanceFromHyperplane(e, weights, b));
+					else //loss == this.HINGE_LOSS
+						c = eta * Math.max(0.0, 1 - label * getDistanceFromHyperplane(e, weights, b));
+					
+					double r = 0.0;
+					// if no regularization, just leave as zero
+					if (reg == this.L1_REGULARIZATION)
+						r = eta * lambda * Math.signum(oldWeight);
+					if (reg == this.L2_REGULARIZATION)
+						r = eta * lambda * oldWeight;
+					
+						
 
-					weights.put(featureIndex, oldWeight + featureValue * label);
+					weights.put(featureIndex, oldWeight + c * label * featureValue - r);
 				}
 
 				// update b
