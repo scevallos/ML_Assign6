@@ -6,7 +6,9 @@ import java.util.HashMap;
 import java.util.Set;
 import java.util.Random;
 
+import ml.data.CrossValidationSet;
 import ml.data.DataSet;
+import ml.data.DataSetSplit;
 import ml.data.Example;
 
 // TODO: FIX ME SO THAT I'M NOT JUST THE PERCEPTRON!
@@ -45,8 +47,8 @@ public class GradientDescentClassifier implements Classifier {
 		// Default behavior below
 		loss = this.EXPONENTIAL_LOSS;
 		reg = this.NO_REGULARIZATION;
-		lambda = 0.1;
-		eta = 0.1;
+		lambda = 0.01;
+		eta = 0.01;
 	}
 
 	/**
@@ -109,38 +111,51 @@ public class GradientDescentClassifier implements Classifier {
 		ArrayList<Example> training = (ArrayList<Example>) data.getData()
 				.clone();
 
-		for (int it = 0; it < iterations; it++) {
-			Collections.shuffle(training);
+		for (int it = 0; it < 1; it++) {
+			// Collections.shuffle(training);
 
 			for (Example e : training) {
 				// Removed check to see if wrong bc GD always updates
 				double label = e.getLabel();
 
+				double dotProduct = this.getDistanceFromHyperplane(e, weights,
+						b);
+
+				double lossVal = 0.0;
+				if (loss == this.EXPONENTIAL_LOSS) {
+					lossVal = Math.exp((-label) * (dotProduct));
+				} else
+					// loss == this.HINGE_LOSS
+					lossVal = Math.max(0.0, (1 - (label * dotProduct)));
+
 				// update the weights
+				double r = 0.0;
 				for (Integer featureIndex : e.getFeatureSet()) {
 					double oldWeight = weights.get(featureIndex);
 					double featureValue = e.getFeature(featureIndex);
-					
-					double c = 0.0;
-					if(loss == this.EXPONENTIAL_LOSS)
-						c = eta * Math.exp(-label * getDistanceFromHyperplane(e, weights, b));
-					else //loss == this.HINGE_LOSS
-						c = eta * Math.max(0.0, 1 - label * getDistanceFromHyperplane(e, weights, b));
-					
-					double r = 0.0;
+
+					r = 0.0;
 					// if no regularization, just leave as zero
 					if (reg == this.L1_REGULARIZATION)
-						r = eta * lambda * Math.signum(oldWeight);
-					if (reg == this.L2_REGULARIZATION)
-						r = eta * lambda * oldWeight;
-					
-						
+						r = lambda * Math.signum(oldWeight);
 
-					weights.put(featureIndex, oldWeight + c * label * featureValue - r);
+					else if (reg == this.L2_REGULARIZATION)
+						r = lambda * oldWeight;
+
+					// System.out.println(oldWeight + this.eta * label *
+					// featureValue * lossVal - r);
+					weights.put(featureIndex, oldWeight + eta
+							* (label * featureValue * lossVal - lambda * r));
 				}
 
+				double r2 = 0.0; // if no regularization, just leave as zero
+				if (reg == this.L1_REGULARIZATION)
+					r2 = lambda * Math.signum(b);
+				else if (reg == this.L2_REGULARIZATION)
+					r2 = lambda * b;
+
 				// update b
-				b += label;
+				b += eta * (label * lossVal - lambda * r2);
 
 			}
 		}
@@ -252,5 +267,99 @@ public class GradientDescentClassifier implements Classifier {
 		}
 
 		return buffer.substring(0, buffer.length() - 1);
+	}
+
+	public static void main(String[] args) throws InvalidParameterException {
+		// Collect the data
+		String titanic = "/home/scevallos/Documents/ML/titanic-train.perc.csv";
+//		String titanic = "/home/scevallos/Documents/ML/data/SPECT.train";
+		// String tr = "/home/scevallos/Documents/ML/Assign6/train.csv";
+		// String te = "/home/scevallos/Documents/ML/Assign6/test.csv";
+
+		// DataSet train = new DataSet(tr, DataSet.CSVFILE);
+		// DataSet test = new DataSet(te, DataSet.CSVFILE);
+		DataSet data = new DataSet(titanic, DataSet.CSVFILE);
+		System.out.println("Loaded in DataSet!");
+
+		CrossValidationSet cvSet = new CrossValidationSet(data, 10);
+
+		DataSetSplit split = data.split(0.8);
+
+		double lambda = 0.1;
+		double eta = 0.1;
+
+		// Prepare the Classifier
+		GradientDescentClassifier GDC = new GradientDescentClassifier();
+		GDC.setRegularization(L2_REGULARIZATION);
+		GDC.setLoss(HINGE_LOSS);
+
+		ArrayList<Double> avgs = new ArrayList<Double>();
+		ArrayList<Double> etas = new ArrayList<Double>();
+		ArrayList<Double> lams = new ArrayList<Double>();
+		
+		ArrayList<Double> pcents = new ArrayList<Double>();
+		
+		for (int i = 0; i < 10; i++) {
+			
+			lams.add(lambda);
+			etas.add(eta);
+			
+			GDC.setLambda(lambda);
+			GDC.setEta(eta);
+			
+			GDC.train(split.getTrain());
+			
+			double correct = 0.0;
+			for (Example e: split.getTest().getData()){
+				double pred = GDC.classify(e);
+				double label = e.getLabel();
+				if (label == pred)
+					correct++;
+			}
+			
+			double percent = correct/split.getTest().getData().size();
+			pcents.add(percent);
+//			double correct = 0.0;
+//			double avg = 0.0;
+//			for (int splitNum = 0; splitNum < 10; splitNum++) {
+//				correct = 0.0;
+//				DataSetSplit temp = cvSet.getValidationSet(splitNum);
+//				// set hyper-parameters
+//				GDC.train(temp.getTrain());
+//
+//				for (Example e : temp.getTest().getData()) {
+//					double pred = GDC.classify(e);
+//					if (pred == e.getLabel())
+//						correct++;
+//				}
+//				pcents.add("" + correct / (temp.getTest().getData().size()));
+//				avg += correct / (temp.getTest().getData().size());
+//			}
+//			avgs.add(avg/10);
+//			avg = 0.0;
+			
+//			lambda *= 0.9;
+			eta *= 0.9;
+			
+		}
+		int maxIndex = 0;
+		for(int i = 1; i < pcents.size(); i++){
+			if (pcents.get(i) > pcents.get(maxIndex))
+				maxIndex = i;
+		}
+		System.out.println("max val: " + pcents.get(maxIndex));
+		System.out.println("max val index: " + maxIndex);
+		System.out.println("param value: " + etas.get(maxIndex));
+		
+		System.out.println(pcents);
+		
+		// System.out.println(GDC.weights);
+
+		// System.out.println("# Correct: " + correct);
+		// System.out.println("# Total: " + test.getData().size());
+		//
+		// System.out.println("Percent Correct: " + correct
+		// / test.getData().size());
+
 	}
 }
